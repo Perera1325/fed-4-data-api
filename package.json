@@ -14,11 +14,13 @@
   "description": "",
   "dependencies": {
     "@clerk/express": "^1.7.43",
+    "@types/node-cron": "^3.0.11",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "mongoose": "^8.18.1",
+    "node-cron": "^4.2.1",
     "uuid": "^12.0.0",
     "zod": "^4.1.11"
   },
