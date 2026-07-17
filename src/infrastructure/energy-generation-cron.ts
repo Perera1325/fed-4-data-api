@@ -1,54 +1,56 @@
 import cron from 'node-cron';
 import { EnergyGenerationRecord } from './entities/EnergyGenerationRecord';
 
+// Rated capacity of the simulated solar unit, in Watts. Should match the
+// `capacity` field of the corresponding SolarUnit in the back-end so that
+// capacity-factor calculations come out realistic. Configurable via env so
+// this stays in sync without editing code.
+const CAPACITY_WATTS = process.env.CAPACITY_WATTS
+  ? parseFloat(process.env.CAPACITY_WATTS)
+  : 5000;
+
 /**
- * Calculate realistic energy generation based on timestamp
- * Uses seasonal variations and time-of-day multipliers
+ * Calculate realistic energy generation (Wh) for a 2-hour interval, based on
+ * timestamp and the unit's rated capacity.
+ *
+ * Generation is expressed as a fraction of rated capacity ("seasonal
+ * capacity factor") achieved during a baseline daylight interval, then
+ * scaled by time-of-day and random variation. This keeps output physically
+ * proportional to capacity instead of a fixed magnitude, so a bigger/smaller
+ * system produces bigger/smaller (and more believable) numbers.
  */
 function calculateEnergyGeneration(timestamp: Date): number {
   const hour = timestamp.getUTCHours();
   const month = timestamp.getUTCMonth(); // 0-11
+  const intervalHours = 2;
 
-  // Base energy generation (higher in summer months)
-  let baseEnergy = 200;
+  let seasonalCapacityFactor = 0.22; // fall baseline
   if (month >= 5 && month <= 7) {
-    // June-August (summer)
-    baseEnergy = 300;
+    seasonalCapacityFactor = 0.3; // June-August (summer)
   } else if (month >= 2 && month <= 4) {
-    // March-May (spring)
-    baseEnergy = 250;
-  } else if (month >= 8 && month <= 10) {
-    // September-November (fall)
-    baseEnergy = 200;
-  } else {
-    // December-February (winter)
-    baseEnergy = 150;
+    seasonalCapacityFactor = 0.25; // March-May (spring)
+  } else if (month >= 11 || month <= 1) {
+    seasonalCapacityFactor = 0.15; // December-February (winter)
   }
 
-  // Adjust based on time of day (solar panels generate more during daylight)
+  const baselineIntervalWh = CAPACITY_WATTS * intervalHours * seasonalCapacityFactor;
+
   let timeMultiplier = 1;
   if (hour >= 6 && hour <= 18) {
-    // Daylight hours
     timeMultiplier = 1.2;
     if (hour >= 10 && hour <= 14) {
-      // Peak sun hours
       timeMultiplier = 1.5;
     }
   } else {
-    // Night hours
     timeMultiplier = 0;
   }
 
-  // Add some random variation (±20%)
   const variation = 0.8 + Math.random() * 0.4;
-  const energyGenerated = Math.round(baseEnergy * timeMultiplier * variation);
+  const energyGenerated = Math.round(baselineIntervalWh * timeMultiplier * variation);
 
   return energyGenerated;
 }
 
-/**
- * Generate a new energy generation record for the current time
- */
 async function generateNewRecord() {
   try {
     const timestamp = new Date();
@@ -75,11 +77,7 @@ async function generateNewRecord() {
   }
 }
 
-/**
- * Initialize the cron scheduler to generate energy records every 2 hours
- */
 export const initializeEnergyCron = () => {
-  // Run every 2 hours on the hour (0 */2 * * *)
   const schedule = process.env.ENERGY_CRON_SCHEDULE || '0 */2 * * *';
 
   cron.schedule(schedule, async () => {
